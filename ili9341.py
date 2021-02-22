@@ -5,10 +5,6 @@ from micropython import const
 import framebuf
 
 
-DEFAULT_MADCTL   = const(0x80)      # Default Memory Access Control
-                                    #  This Controls Mirroring / Flipping
-                                    #  of the Display
-
 #   IlI9341 registers definitions
 
 # LCD control registers
@@ -92,7 +88,7 @@ PRCTL       = const(0xF7)   # Pump Ratio Control
 
 
 class ILI9341(framebuf.FrameBuffer):
-    def __init__(self, width, height, spi, dc, rst, cs, external_vcc=False):
+    def __init__(self, width, height, spi, dc, rst, cs, rot=0, bgr=0, external_vcc=False):
         if dc is None:
             raise RuntimeError('ILI9341 must be initialized with a dc pin number')
         dc.init(dc.OUT, value=0)
@@ -111,10 +107,21 @@ class ILI9341(framebuf.FrameBuffer):
         self.width = width
         self.external_vcc = external_vcc
         self.buffer = bytearray(self.height * self.width*2)
-        super().__init__(self.buffer, self.width, self.height, framebuf.RGB565, self.width)
-        self.init_display()
-    def init_display(self, madctl = DEFAULT_MADCTL, **kwargs):
+        super().__init__(self.buffer, self.width, self.height, framebuf.RGB565SW, self.width)
         """ Setup and Initialize Display. """
+        if (rot ==0):
+            madctl=0x88
+        elif (rot ==1):
+            madctl=0xe8
+        elif (rot ==2):
+            madctl=0x48
+        elif (rot ==3):
+            madctl=0x28
+        else:
+            madctl=0x88
+        if bgr==1:
+            madctl&=0xf7
+            
         self.madctl = pack('>B', madctl)
         self.reset()
         for command, data in (
@@ -133,9 +140,6 @@ class ILI9341(framebuf.FrameBuffer):
             (FRMCTL1, b"\x00\x18"),
             (DISCTL, b"\x08\x82\x27"),
             (ENA3G, b"\x00"),
-            (GAMMASET, b"\x01"),
-            (PGAMCTL, b"\x0f\x31\x2b\x0c\x0e\x08\x4e\xf1\x37\x07\x10\x03\x0e\x09\x00"),
-            (NGAMCTL, b"\x00\x0e\x14\x03\x11\x07\x31\xc1\x48\x08\x0f\x0c\x31\x36\x0f"),
             (MADCTL, self.madctl)):
             self._write(command, data)
         self._write(SLPOUT)
@@ -162,9 +166,12 @@ class ILI9341(framebuf.FrameBuffer):
             self.spi.write(data)
             self.cs.on()
     def show(self):
-        self._write(CASET,pack(">HH", 0, 239))
-        self._write(PASET,pack(">HH", 0, 319))
+        self._write(CASET,pack(">HH", 0, self.width-1))
+        self._write(PASET,pack(">HH", 0, self.height-1))
         self._write(RAMWR,self.buffer)
+    def rgb(self,r,g,b):
+        return ((r&0xf8)<<8)|((g&0xfc)<<3)|((b&0xf8)>>3)
+
 
         
 
